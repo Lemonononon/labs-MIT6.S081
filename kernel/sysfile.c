@@ -112,7 +112,7 @@ sys_fstat(void)
 
   if(argfd(0, 0, &f) < 0 || argaddr(1, &st) < 0)
     return -1;
-  return filestat(f, st);
+  return filestat(f, st); //file descriptor and address?
 }
 
 // Create the path new as a link to the same inode as old.
