@@ -701,11 +701,12 @@ procdump(void)
 uint64 procnum(void){
 
   uint64 num = 0;
-  struct proc *p;
 
-  for ( p = proc; p < &proc[NPROC]; p++)
+  for ( struct proc *p = proc; p < &proc[NPROC]; p++)
   {
-    if (p->state != UNUSED) num++;
+    if (p->state != UNUSED){
+      num++;
+    }
   }
 
   return num;

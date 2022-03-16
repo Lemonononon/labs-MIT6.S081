@@ -58,12 +58,12 @@ void            itrunc(struct inode*);
 void            ramdiskinit(void);
 void            ramdiskintr(void);
 void            ramdiskrw(struct buf*);
-uint64          freemem(void);
 
 // kalloc.c
 void*           kalloc(void);
 void            kfree(void *);
 void            kinit(void);
+uint64          freemem(void);
 
 // log.c
 void            initlog(int, struct superblock*);

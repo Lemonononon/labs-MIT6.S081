@@ -113,16 +113,14 @@ uint64 sys_trace(void)
 uint64 sys_sysinfo(void)
 {
   uint64 addr; 
-  if(argaddr(1, &addr)<0) return -1;
+  if(argaddr(0, &addr)<0) return -1;
 
   struct sysinfo info;
   info.freemem = freemem();
+  info.nproc = procnum();
 
   struct proc *p = myproc();  
-  if (copyout(p->pagetable, addr, (char *)&info, sizeof(info)) < 0 )
-  {
-    return -1;
-  }
+  if (copyout(p->pagetable, addr, (char *)&info, sizeof(info)) < 0 ) return -1;
 
   return 0;
 }
