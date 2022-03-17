@@ -47,6 +47,11 @@ kvminit()
   kvmmap(TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
 }
 
+void 
+kvminit_modify(){
+  
+}
+
 // Switch h/w page table register to the kernel's page table,
 // and enable paging.
 void
@@ -439,4 +444,41 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
   } else {
     return -1;
   }
+}
+
+
+//这里应该写成递归，三层for循环泰莎比了
+void
+vmprint( pagetable_t pagetable_1){
+  int i, j, k;
+
+  printf("page table %p\n", pagetable_1);
+
+  for (i = 0; i < 512; i++)
+  {
+    pte_t pte_1 = pagetable_1[i];
+    if ((pte_1 & PTE_V) && (pte_1 & (PTE_R|PTE_W|PTE_X)) == 0)
+    {
+      printf("..");
+      pagetable_t pagetable_2 = (pagetable_t)PTE2PA(pte_1);
+      printf("%d: pte %p pa %p\n", i, pte_1, pagetable_2);
+      for ( j = 0; j < 512; j++)
+      {
+        pte_t pte_2 = pagetable_2[j];
+        if ( (pte_2 & PTE_V) && (pte_2 & (PTE_R|PTE_W|PTE_X)) == 0 )
+        {
+          printf(".. ..");
+          pagetable_t pagetable_3 = (pagetable_t)PTE2PA(pte_2);
+          printf("%d: pte %p pa %p\n", j, pte_2, pagetable_3);
+
+          for ( k = 0; k < 512; k++)
+          {
+            pte_t pte_3 = pagetable_3[k];
+            if ( pte_3 & PTE_V ){
+              printf(".. .. ..");
+              printf("%d: pte %p pa %p\n", k, pte_3, (pagetable_t)PTE2PA(pte_3));}} 
+        }
+      }
+    }    
+  } 
 }

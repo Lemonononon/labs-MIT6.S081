@@ -48,7 +48,7 @@
 #define PHYSTOP (KERNBASE + 128*1024*1024)
 
 // map the trampoline page to the highest address,
-// in both user and kernel space.
+// in both user and kernel space. 只分了一页？
 #define TRAMPOLINE (MAXVA - PGSIZE)
 
 // map kernel stacks beneath the trampoline,
