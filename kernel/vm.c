@@ -22,8 +22,9 @@ void kvm_map_pagetable(pagetable_t pgtbl){
   // virtio mmio disk interface
   kvmmap(pgtbl, VIRTIO0, VIRTIO0, PGSIZE, PTE_R | PTE_W);
 
+  //避免冲突，去除CLINT的映射，仅在全局内核页表映射
   // CLINT
-  kvmmap(pgtbl, CLINT, CLINT, 0x10000, PTE_R | PTE_W);
+  // kvmmap(pgtbl, CLINT, CLINT, 0x10000, PTE_R | PTE_W);
 
   // PLIC
   kvmmap(pgtbl, PLIC, PLIC, 0x400000, PTE_R | PTE_W);
@@ -53,6 +54,7 @@ void
 kvminit()
 {
   kernel_pagetable = kvminit_newpgtbl();
+  kvmmap(kernel_pagetable, CLINT, CLINT, 0x10000, PTE_R | PTE_W);
 }
 
 // Switch h/w page table register to the kernel's page table,
@@ -405,23 +407,24 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 int
 copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
 {
-  uint64 n, va0, pa0;
+  return copyin_new(pagetable, dst, srcva, len);
+  // uint64 n, va0, pa0;
 
-  while(len > 0){
-    va0 = PGROUNDDOWN(srcva);
-    pa0 = walkaddr(pagetable, va0);
-    if(pa0 == 0)
-      return -1;
-    n = PGSIZE - (srcva - va0);
-    if(n > len)
-      n = len;
-    memmove(dst, (void *)(pa0 + (srcva - va0)), n);
+  // while(len > 0){
+  //   va0 = PGROUNDDOWN(srcva);
+  //   pa0 = walkaddr(pagetable, va0);
+  //   if(pa0 == 0)
+  //     return -1;
+  //   n = PGSIZE - (srcva - va0);
+  //   if(n > len)
+  //     n = len;
+  //   memmove(dst, (void *)(pa0 + (srcva - va0)), n);
 
-    len -= n;
-    dst += n;
-    srcva = va0 + PGSIZE;
-  }
-  return 0;
+  //   len -= n;
+  //   dst += n;
+  //   srcva = va0 + PGSIZE;
+  // }
+  // return 0;
 }
 
 // Copy a null-terminated string from user to kernel.
@@ -431,40 +434,41 @@ copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
 int
 copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
 {
-  uint64 n, va0, pa0;
-  int got_null = 0;
+  return copyinstr_new(pagetable, dst, srcva, max);
+  // uint64 n, va0, pa0;
+  // int got_null = 0;
 
-  while(got_null == 0 && max > 0){
-    va0 = PGROUNDDOWN(srcva);
-    pa0 = walkaddr(pagetable, va0);
-    if(pa0 == 0)
-      return -1;
-    n = PGSIZE - (srcva - va0);
-    if(n > max)
-      n = max;
+  // while(got_null == 0 && max > 0){
+  //   va0 = PGROUNDDOWN(srcva);
+  //   pa0 = walkaddr(pagetable, va0);
+  //   if(pa0 == 0)
+  //     return -1;
+  //   n = PGSIZE - (srcva - va0);
+  //   if(n > max)
+  //     n = max;
 
-    char *p = (char *) (pa0 + (srcva - va0));
-    while(n > 0){
-      if(*p == '\0'){
-        *dst = '\0';
-        got_null = 1;
-        break;
-      } else {
-        *dst = *p;
-      }
-      --n;
-      --max;
-      p++;
-      dst++;
-    }
+  //   char *p = (char *) (pa0 + (srcva - va0));
+  //   while(n > 0){
+  //     if(*p == '\0'){
+  //       *dst = '\0';
+  //       got_null = 1;
+  //       break;
+  //     } else {
+  //       *dst = *p;
+  //     }
+  //     --n;
+  //     --max;
+  //     p++;
+  //     dst++;
+  //   }
 
-    srcva = va0 + PGSIZE;
-  }
-  if(got_null){
-    return 0;
-  } else {
-    return -1;
-  }
+  //   srcva = va0 + PGSIZE;
+  // }
+  // if(got_null){
+  //   return 0;
+  // } else {
+  //   return -1;
+  // }
 }
 
 
@@ -503,3 +507,49 @@ vmprint( pagetable_t pagetable_1){
     }    
   } 
 }
+
+//为每个进程建立kernel pagetable 到 user pagetable的映射
+int
+kernel_pagetable2user_pagetable(pagetable_t kpgtbl, pagetable_t upgtbl, uint64 start, uint64 sz)
+{
+  int va;
+  pte_t * pte;
+  uint64 pa;
+  uint flag;
+  for ( va = PGROUNDDOWN(start); va < start + sz; va+=PGSIZE)
+  {
+    if ( (pte=walk(upgtbl, va, 0)) == 0 || (*pte&PTE_V) == 0 ) panic("upgtbl walk error!");
+
+    pa = PTE2PA(*pte);
+    flag = PTE_FLAGS(*pte) & ~PTE_U;
+    if ( mappages(kpgtbl, va, PGSIZE, pa, flag) != 0) goto err;
+  }
+  return 0;
+  
+  err:
+  uvmunmap(kpgtbl, 0, va / PGSIZE, 0);
+  return -1;
+}
+
+uint64
+kvmdealloc(pagetable_t pgtbl, uint64 oldsz, uint64 newsz){
+  if (newsz >= oldsz) return oldsz;
+
+  if(PGROUNDUP(newsz) < PGROUNDUP(oldsz)){
+    int npages = (PGROUNDUP(oldsz) - PGROUNDUP(newsz)) / PGSIZE;
+    uvmunmap(pgtbl, PGROUNDUP(newsz), npages, 1);
+  }
+
+  return newsz;
+
+}
+// void
+// upgtbl2kpgtbl(pagetable_t kp, pagetable_t up, uint64 oldsz, uint64 newsz){
+//   if ( newsz > PLIC ) panic( "over PLIC!" );
+//   if (/* condition */)
+//   {
+//     /* code */
+//   }
+  
+
+// }

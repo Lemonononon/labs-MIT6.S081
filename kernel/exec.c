@@ -70,6 +70,11 @@ exec(char *path, char **argv)
   uint64 sz1;
   if((sz1 = uvmalloc(pagetable, sz, sz + 2*PGSIZE)) == 0)
     goto bad;
+  if ( sz1 > PLIC ) //如果超过了PLIC的限制，goto bad
+  {
+    goto bad;
+  }
+  
   sz = sz1;
   uvmclear(pagetable, sz-2*PGSIZE);
   sp = sz;
@@ -108,6 +113,8 @@ exec(char *path, char **argv)
       last = s+1;
   safestrcpy(p->name, last, sizeof(p->name));
     
+  //TODO: 清除内核页表中对程序内存的旧映射，然后重新建立映射??
+  kernel_pagetable2user_pagetable(pagetable, p->pagetable_each_process, 0, sz);
   // Commit to the user image.
   oldpagetable = p->pagetable;
   p->pagetable = pagetable;

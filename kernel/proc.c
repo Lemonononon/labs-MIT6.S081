@@ -242,6 +242,8 @@ userinit(void)
   safestrcpy(p->name, "initcode", sizeof(p->name));
   p->cwd = namei("/");
 
+//userpgtbl映射到kernelpgtbl的底部 [0, PLIC）
+  kernel_pagetable2user_pagetable(p->pagetable_each_process,p->pagetable,0,p->sz);
   p->state = RUNNABLE;
 
   release(&p->lock);
@@ -252,16 +254,23 @@ userinit(void)
 int
 growproc(int n)
 {
-  uint sz;
+  uint sz, newsz;
   struct proc *p = myproc();
 
   sz = p->sz;
   if(n > 0){
-    if((sz = uvmalloc(p->pagetable, sz, sz + n)) == 0) {
+    if((newsz = uvmalloc(p->pagetable, sz, sz + n)) == 0) {
       return -1;
     }
+    if ( kernel_pagetable2user_pagetable(p->pagetable_each_process,p->pagetable,0,sz)!=0 )
+    {
+      uvmdealloc(p->pagetable, sz, newsz); //TODO:是否有必要呢？
+      return -1;
+    }
+    sz = newsz;
   } else if(n < 0){
-    sz = uvmdealloc(p->pagetable, sz, sz + n);
+    uvmdealloc(p->pagetable, sz, sz + n);
+    sz = kvmdealloc( p->pagetable_each_process, sz, sz+n );
   }
   p->sz = sz;
   return 0;
@@ -282,7 +291,8 @@ fork(void)
   }
 
   // Copy user memory from parent to child.
-  if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
+  if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0 ||
+    kernel_pagetable2user_pagetable(p->pagetable_each_process, p->pagetable, 0, p->sz)<0){
     freeproc(np);
     release(&np->lock);
     return -1;
