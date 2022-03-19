@@ -31,15 +31,7 @@ procinit(void)
   for(p = proc; p < &proc[NPROC]; p++) {
       initlock(&p->lock, "proc");
 
-      // Allocate a page for the process's kernel stack.
-      // Map it high in memory, followed by an invalid
-      // guard page.
-      char *pa = kalloc();
-      if(pa == 0)
-        panic("kalloc");
-      uint64 va = KSTACK((int) (p - proc));
-      kvmmap(va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
-      p->kstack = va;
+      
   }
   kvminithart();
 }
@@ -121,6 +113,18 @@ found:
     return 0;
   }
 
+
+  p->pagetable_each_process = kvminit_newpgtbl();
+  // Allocate a page for the process's kernel stack.
+  // Map it high in memory, followed by an invalid
+  // guard page.
+  char *pa = kalloc();
+  if(pa == 0)
+    panic("kalloc");
+  uint64 va = KSTACK((int) (p - proc));
+  kvmmap(p->pagetable_each_process, va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
+  p->kstack = va;
+
   // Set up new context to start executing at forkret,
   // which returns to user space.
   memset(&p->context, 0, sizeof(p->context));
@@ -149,6 +153,16 @@ freeproc(struct proc *p)
   p->chan = 0;
   p->killed = 0;
   p->xstate = 0;
+
+  // 释放进程的内核栈
+  void *kstack_pa = (void *)kvmpa(p->pagetable_each_process, p->kstack);
+  // printf("trace: free kstack %p\n", kstack_pa);
+  kfree(kstack_pa);
+  p->kstack = 0;
+
+  kvm_free_kernelpgtbl(p->pagetable_each_process);
+  p->pagetable_each_process = 0;
+
   p->state = UNUSED;
 }
 
@@ -473,7 +487,14 @@ scheduler(void)
         // before jumping back to us.
         p->state = RUNNING;
         c->proc = p;
+
+
+        w_satp(MAKE_SATP(p->pagetable_each_process));
+        sfence_vma();
+
         swtch(&c->context, &p->context);
+
+        kvminithart(); //没有进程的时候，切换回全局的kernel pagetable
 
         // Process is done running for now.
         // It should have changed its p->state before coming back.
